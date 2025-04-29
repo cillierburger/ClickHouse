@@ -1703,8 +1703,6 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
 
 void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const StorageID & from_table_id, const StorageID & to_table_id)
 {
-    if(new_referential_dependencies.empty() and new_loading_dependencies.empty())
-        return;
 
     std::lock_guard lock{databases_mutex};
 
@@ -1739,8 +1737,6 @@ void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const Stora
 
 void DatabaseCatalog::checkTablesCanBeExchangedWithNoCyclicDependencies(const StorageID & table_id_1, const StorageID & table_id_2)
 {
-    if(new_referential_dependencies.empty() and new_loading_dependencies.empty())
-        return;
 
     std::lock_guard lock{databases_mutex};
 
