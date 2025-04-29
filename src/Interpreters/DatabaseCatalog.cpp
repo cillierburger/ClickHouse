@@ -1665,8 +1665,8 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
     const TableNamesSet & new_referential_dependencies,
     const TableNamesSet & new_loading_dependencies)
 {
-    if(new_referential_dependencies.empty() and new_loading_dependencies.empty())
-        return;
+//    if(new_referential_dependencies.empty() and new_loading_dependencies.empty())
+//        return;
 
     std::lock_guard lock{databases_mutex};
 
@@ -1676,27 +1676,24 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
     {
         auto old_dependencies = dependencies.removeDependencies(table_id);
         dependencies.addDependencies(table_name, new_dependencies);
-        auto restore_dependencies = [&]()
-        {
-            dependencies.removeDependencies(table_id);
-            if (!old_dependencies.empty())
-                dependencies.addDependencies(table_id, old_dependencies);
-        };
 
-        if (dependencies.hasCyclicDependencies())
+        // Build localized subgraph
+        std::unordered_set<Node *> subgraph_nodes;
+        dependencies.getTransitiveClosure(table_id, subgraph_nodes);
+        for (const auto & dep : new_dependencies)
+            dependencies.getTransitiveClosure(StorageID{dep}, subgraph_nodes);
+
+        if (dependencies.hasCyclicDependenciesInSubgraph(subgraph_nodes))
         {
-            auto cyclic_dependencies_description = dependencies.describeCyclicDependencies();
             restore_dependencies();
             throw Exception(
                 ErrorCodes::INFINITE_LOOP,
-                "Cannot add dependencies for '{}', because it will lead to cyclic dependencies: {}",
-                table_name.getFullName(),
-                cyclic_dependencies_description);
+                "Cannot add dependencies for '{}', because it will lead to cyclic dependencies (localized)",
+                table_name.getFullName());
         }
 
         restore_dependencies();
     };
-
     check(referential_dependencies, new_referential_dependencies);
     check(loading_dependencies, new_loading_dependencies);
 }

@@ -103,6 +103,11 @@ public:
     /// Checks that there are no cyclic dependencies in the graph.
     /// Cyclic dependencies are dependencies like "A->A" or "A->B->C->D->A".
     void checkNoCyclicDependencies() const;
+    /// Returns all nodes reachable from the given start node (including itself)
+    void getTransitiveClosure(const StorageID & start, std::unordered_set<Node *> & visited) const;
+    /// Checks for cycles only within a subset of nodes (faster than checking entire graph)
+    bool hasCyclicDependenciesInSubgraph(const std::unordered_set<Node *> & subgraph_nodes) const;
+
     bool hasCyclicDependencies() const;
     String describeCyclicDependencies() const;
     std::vector<StorageID> getTablesWithCyclicDependencies() const;
