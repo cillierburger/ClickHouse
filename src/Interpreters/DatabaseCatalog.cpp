@@ -1677,17 +1677,26 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
         auto old_dependencies = dependencies.removeDependencies(table_id);
         dependencies.addDependencies(table_name, new_dependencies);
 
-        if (dependencies.wouldCreateCycle(table_id, new_dependencies))
+        bool has_cycle = dependencies.wouldCreateCycle(table_id, new_dependencies);
+
+        // Restore original dependencies
+        dependencies.removeDependencies(table_id);
+        dependencies.addDependencies(table_id, old_dependencies);
+
+        if (has_cycle)
         {
-            restore_dependencies();
             throw Exception(
                 ErrorCodes::INFINITE_LOOP,
-                "Cannot add dependencies for '{}', because it will lead to cyclic dependencies (localized)",
+                "Cannot add dependencies for '{}', because it will lead to cyclic dependencies",
                 table_name.getFullName());
         }
-
-        restore_dependencies();
     };
+
+    if (!new_referential_dependencies.empty())
+        check(referential_dependencies, new_referential_dependencies);
+
+    if (!new_loading_dependencies.empty())
+        check(loading_dependencies, new_loading_dependencies);
 }
 
 void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const StorageID & from_table_id, const StorageID & to_table_id)
