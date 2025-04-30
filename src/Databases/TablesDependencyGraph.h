@@ -36,6 +36,7 @@ using LoggerPtr = std::shared_ptr<Poco::Logger>;
 class TablesDependencyGraph
 {
 public:
+    struct Node; 
     explicit TablesDependencyGraph(const String & name_for_logging_);
 
     TablesDependencyGraph(const TablesDependencyGraph & src);
