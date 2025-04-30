@@ -1677,13 +1677,7 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
         auto old_dependencies = dependencies.removeDependencies(table_id);
         dependencies.addDependencies(table_name, new_dependencies);
 
-        // Build localized subgraph
-        std::unordered_set<Node *> subgraph_nodes;
-        dependencies.getTransitiveClosure(table_id, subgraph_nodes);
-        for (const auto & dep : new_dependencies)
-            dependencies.getTransitiveClosure(StorageID{dep}, subgraph_nodes);
-
-        if (dependencies.hasCyclicDependenciesInSubgraph(subgraph_nodes))
+        if (dependencies.wouldCreateCycle(table_id, new_dependencies))
         {
             restore_dependencies();
             throw Exception(
@@ -1694,8 +1688,6 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
 
         restore_dependencies();
     };
-    check(referential_dependencies, new_referential_dependencies);
-    check(loading_dependencies, new_loading_dependencies);
 }
 
 void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const StorageID & from_table_id, const StorageID & to_table_id)

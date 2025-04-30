@@ -601,6 +601,18 @@ bool TablesDependencyGraph::hasCyclicDependenciesInSubgraph(const std::unordered
     return false;
 }
 
+bool TablesDependencyGraph::wouldCreateCycle(
+    const StorageID & table_id,
+    const TableNamesSet & new_dependencies) const
+{
+    std::unordered_set<Node *> subgraph_nodes;
+    getTransitiveClosure(table_id, subgraph_nodes);
+
+    for (const auto & dep : new_dependencies)
+        getTransitiveClosure(StorageID{dep}, subgraph_nodes);
+
+    return hasCyclicDependenciesInSubgraph(subgraph_nodes);
+}
 
 
 bool TablesDependencyGraph::hasCyclicDependencies() const
@@ -648,6 +660,7 @@ String TablesDependencyGraph::describeCyclicDependencies() const
     }
     return res;
 }
+
 
 
 void TablesDependencyGraph::setNeedRecalculateLevels() const
