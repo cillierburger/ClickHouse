@@ -612,14 +612,37 @@ bool TablesDependencyGraph::wouldCreateCycle(
     const StorageID & table_id,
     const TableNamesSet & new_dependencies) const
 {
-    std::unordered_set<Node *> subgraph_nodes;
-    getTransitiveClosure(table_id, subgraph_nodes);
+    auto *start_node = findNode(table_id);
+    if (!start_node)
+        return false;
 
-    for (const auto & dep : new_dependencies)
-        getTransitiveClosure(StorageID{dep}, subgraph_nodes);
+    std::unordered_set<Node *> visited;
 
-    return hasCyclicDependenciesInSubgraph(subgraph_nodes);
+    std::function<bool(Node *)> dfs = [&](Node * node) -> bool
+    {
+        if (node == start_node)
+            return true;
+        if (!visited.insert(node).second)
+            return false;
+
+        for (Node * dep : node->dependencies)
+        {
+            if (dfs(dep))
+                return true;
+        }
+        return false;
+    };
+
+    for (const auto & dep_name : new_dependencies)
+    {
+        auto *dep_node = findNode(StorageID(dep_name));
+        if (dep_node && dfs(dep_node))
+            return true;
+    }
+
+    return false;
 }
+
 
 std::vector<StorageID> TablesDependencyGraph::getTablesWithCyclicDependencies() const
 {
