@@ -1704,14 +1704,13 @@ void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const Stora
     {
         auto old_dependencies_vec = dependencies.removeDependencies(from_table_id);
 
-        TableNamesSet old_dependencies_set;
+        TableNamesSet new_dependencies;
         for (const auto & dep : old_dependencies_vec)
-            old_dependencies_set.emplace(QualifiedTableName{dep});
+            new_dependencies.emplace(QualifiedTableName{dep.database_name, dep.table_name});
 
-        bool has_cycle = dependencies.wouldCreateCycle(QualifiedTableName{to_table_id}, old_dependencies_set);
+        bool has_cycle = dependencies.wouldCreateCycle(QualifiedTableName{to_table_id.database_name, to_table_id.table_name}, new_dependencies);
 
         // Restore original dependencies
-        dependencies.removeDependencies(to_table_id);
         dependencies.addDependencies(from_table_id, old_dependencies_vec);
 
         if (has_cycle)
@@ -1724,11 +1723,10 @@ void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const Stora
         }
     };
 
-	if(!referential_dependencies.empty())
-	    check(referential_dependencies);
-	if(!loading_dependencies.empty())
-    	check(loading_dependencies);
-
+    if (!referential_dependencies.empty())
+        check(referential_dependencies);
+    if (!loading_dependencies.empty())
+        check(loading_dependencies);
 }
 
 void DatabaseCatalog::checkTablesCanBeExchangedWithNoCyclicDependencies(const StorageID & table_id_1, const StorageID & table_id_2)
