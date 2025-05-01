@@ -702,6 +702,10 @@ void TablesDependencyGraph::setNeedRecalculateLevels() const
 
 void TablesDependencyGraph::calculateLevels() const
 {
+	auto skip = true;
+	if (skip)
+		return;
+
     if (levels_calculated)
         return;
     levels_calculated = true;
