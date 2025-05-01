@@ -1700,16 +1700,19 @@ void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const Stora
 {
     std::lock_guard lock{databases_mutex};
 
-
-
     auto check = [&](TablesDependencyGraph & dependencies)
     {
-        auto old_dependencies = dependencies.removeDependencies(from_table_id);
-        bool has_cycle = dependencies.wouldCreateCycle(to_table_id, old_dependencies);
+        auto old_dependencies_vec = dependencies.removeDependencies(from_table_id);
+
+        TableNamesSet old_dependencies_set;
+        for (const auto & dep : old_dependencies_vec)
+            old_dependencies_set.emplace(QualifiedTableName{dep});
+
+        bool has_cycle = dependencies.wouldCreateCycle(QualifiedTableName{to_table_id}, old_dependencies_set);
 
         // Restore original dependencies
         dependencies.removeDependencies(to_table_id);
-        dependencies.addDependencies(from_table_id, old_dependencies);
+        dependencies.addDependencies(from_table_id, old_dependencies_vec);
 
         if (has_cycle)
         {
