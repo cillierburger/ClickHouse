@@ -552,62 +552,6 @@ bool TablesDependencyGraph::hasCyclicDependencies() const
     return !nodes_sorted_by_level.empty() && (nodes_sorted_by_level.back()->level == CYCLIC_LEVEL);
 }
 
-
-void TablesDependencyGraph::getTransitiveClosure(
-    const StorageID & start,
-    std::unordered_set<Node *> & visited) const
-{
-    auto * node = findNode(start);
-    if (!node || visited.contains(node))
-        return;
-
-    std::vector<Node *> stack{node};
-    while (!stack.empty())
-    {
-        Node * current = stack.back();
-        stack.pop_back();
-
-        if (!visited.insert(current).second)
-            continue;
-
-        for (Node * dep : current->dependencies)
-            stack.push_back(dep);
-    }
-}
-
-
-bool TablesDependencyGraph::hasCyclicDependenciesInSubgraph(const std::unordered_set<Node *> & subgraph_nodes) const
-{
-    std::unordered_set<Node *> visited;
-    std::unordered_set<Node *> stack;
-
-    std::function<bool(Node *)> dfs = [&](Node * node) -> bool {
-        if (!subgraph_nodes.contains(node))
-            return false;
-        if (stack.contains(node))
-            return true;
-        if (visited.contains(node))
-            return false;
-
-        visited.insert(node);
-        stack.insert(node);
-        for (Node * neighbor : node->dependencies)
-        {
-            if (dfs(neighbor))
-                return true;
-        }
-        stack.erase(node);
-        return false;
-    };
-
-    for (Node * node : subgraph_nodes)
-    {
-        if (dfs(node))
-            return true;
-    }
-    return false;
-}
-
 bool TablesDependencyGraph::wouldCreateCycle(
     const StorageID & table_id,
     const TableNamesSet & new_dependencies) const
