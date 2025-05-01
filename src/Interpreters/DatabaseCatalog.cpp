@@ -1725,7 +1725,7 @@ void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const Stora
 	    check(referential_dependencies);
 	if(!loading_dependencies.empty())
     	check(loading_dependencies);
-}
+
 }
 
 void DatabaseCatalog::checkTablesCanBeExchangedWithNoCyclicDependencies(const StorageID & table_id_1, const StorageID & table_id_2)
