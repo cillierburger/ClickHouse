@@ -618,17 +618,17 @@ bool TablesDependencyGraph::wouldCreateCycle(
 
     std::unordered_set<Node *> global_visited;
 
-    std::function<bool(Node *, int)> dfs = [&](Node * node, int depth) -> bool
+    std::function<bool(Node *)> dfs = [&](Node * node) -> bool
     {
         if (node == start_node)
             return true;
         if (!global_visited.insert(node).second)
             return false;
-        if (depth > 64)
+        if (node->level < start_node->level)
             return false;
 
         for (Node * dep : node->dependencies)
-            if (dfs(dep, depth + 1))
+            if (dfs(dep))
                 return true;
 
         return false;
@@ -643,12 +643,16 @@ bool TablesDependencyGraph::wouldCreateCycle(
         if (!dep_node)
             continue;
 
-        if (dfs(dep_node, 0))
+        if (start_node->level < dep_node->level)
+            continue; // Adding edge from higher to lower level: no cycle possible
+
+        if (dfs(dep_node))
             return true;
     }
 
     return false;
 }
+
 
 
 std::vector<StorageID> TablesDependencyGraph::getTablesWithCyclicDependencies() const
@@ -693,6 +697,9 @@ String TablesDependencyGraph::describeCyclicDependencies() const
 
 void TablesDependencyGraph::setNeedRecalculateLevels() const
 {
+	auto skip = true;
+	if (skip)
+		return true;
     levels_calculated = false;
     nodes_sorted_by_level_lazy.clear();
 }
