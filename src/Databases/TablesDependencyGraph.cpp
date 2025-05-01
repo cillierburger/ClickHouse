@@ -616,27 +616,34 @@ bool TablesDependencyGraph::wouldCreateCycle(
     if (!start_node)
         return false;
 
-    std::unordered_set<Node *> visited;
+    std::unordered_set<Node *> global_visited;
 
-    std::function<bool(Node *)> dfs = [&](Node * node) -> bool
+    std::function<bool(Node *, int)> dfs = [&](Node * node, int depth) -> bool
     {
         if (node == start_node)
             return true;
-        if (!visited.insert(node).second)
+        if (!global_visited.insert(node).second)
+            return false;
+        if (depth > 64)
             return false;
 
         for (Node * dep : node->dependencies)
-        {
-            if (dfs(dep))
+            if (dfs(dep, depth + 1))
                 return true;
-        }
+
         return false;
     };
 
-    for (const auto & dep_name : new_dependencies)
+    for (const auto & dep : new_dependencies)
     {
-        auto *dep_node = findNode(StorageID(dep_name));
-        if (dep_node && dfs(dep_node))
+        if (table_id == StorageID(dep))
+            return true;
+
+        auto *dep_node = findNode(StorageID(dep));
+        if (!dep_node)
+            continue;
+
+        if (dfs(dep_node, 0))
             return true;
     }
 
