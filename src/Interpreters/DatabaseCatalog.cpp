@@ -1665,9 +1665,6 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
     const TableNamesSet & new_referential_dependencies,
     const TableNamesSet & new_loading_dependencies)
 {
-	auto skip = true;
-	if (skip)
-		return;
     std::lock_guard lock{databases_mutex};
 
     StorageID table_id = StorageID{table_name};
