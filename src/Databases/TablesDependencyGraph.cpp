@@ -699,7 +699,7 @@ void TablesDependencyGraph::setNeedRecalculateLevels() const
 {
 	auto skip = true;
 	if (skip)
-		return true;
+		return;
     levels_calculated = false;
     nodes_sorted_by_level_lazy.clear();
 }
