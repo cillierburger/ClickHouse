@@ -35,6 +35,9 @@ using LoggerPtr = std::shared_ptr<Poco::Logger>;
 /// WARNING: This class doesn't have an embedded mutex, so it must be synchronized outside.
 class TablesDependencyGraph
 {
+private:
+	// Forward declaration
+    struct Node;
 public:
     explicit TablesDependencyGraph(const String & name_for_logging_);
 
