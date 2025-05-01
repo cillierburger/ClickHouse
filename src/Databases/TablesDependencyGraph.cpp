@@ -96,9 +96,11 @@ void TablesDependencyGraph::addDependency(const StorageID & table_id, const Stor
     auto * dependency_node = addOrUpdateNode(dependency);
 
     bool inserted = table_node->dependencies.insert(dependency_node).second;
-    if (!inserted)
-        return; /// Already exists
 
+    if (!inserted)
+        return; /// Not inserted because we already had this dependency.
+
+    /// `dependency_node` must be updated too.
     [[maybe_unused]] bool inserted_to_set = dependency_node->dependents.insert(table_node).second;
     chassert(inserted_to_set);
 
