@@ -1696,22 +1696,20 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
         check(loading_dependencies, new_loading_dependencies);
 }
 
+
 void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const StorageID & from_table_id, const StorageID & to_table_id)
 {
     std::lock_guard lock{databases_mutex};
 
     auto check = [&](TablesDependencyGraph & dependencies)
     {
-        auto old_dependencies_vec = dependencies.removeDependencies(from_table_id);
+        auto old_dependencies = dependencies.removeDependencies(from_table_id);
+        dependencies.addDependencies(to_table_id, old_dependencies);
 
-        TableNamesSet new_dependencies;
-        for (const auto & dep : old_dependencies_vec)
-            new_dependencies.emplace(dep.database_name, dep.table_name);
+		bool has_cycle = dependencies.wouldCreateCycle(to_table_id, old_dependencies);
 
-        bool has_cycle = dependencies.wouldCreateCycle(to_table_id, new_dependencies);
-
-        // Restore original dependencies
-        dependencies.addDependencies(from_table_id, old_dependencies_vec);
+        dependencies.removeDependencies(to_table_id);
+        dependencies.addDependencies(from_table_id, old_dependencies);
 
         if (has_cycle)
         {
@@ -1721,13 +1719,14 @@ void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const Stora
                 from_table_id.getFullTableName(),
                 to_table_id.getFullTableName());
         }
+
     };
 
-    if (!referential_dependencies.empty())
-        check(referential_dependencies);
-    if (!loading_dependencies.empty())
-        check(loading_dependencies);
+    check(referential_dependencies);
+    check(loading_dependencies);
 }
+
+
 
 void DatabaseCatalog::checkTablesCanBeExchangedWithNoCyclicDependencies(const StorageID & table_id_1, const StorageID & table_id_2)
 {
