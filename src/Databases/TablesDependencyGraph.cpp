@@ -621,9 +621,6 @@ bool TablesDependencyGraph::wouldCreateCycle(
     return hasCyclicDependenciesInSubgraph(subgraph_nodes);
 }
 
-
-
-
 std::vector<StorageID> TablesDependencyGraph::getTablesWithCyclicDependencies() const
 {
     std::vector<StorageID> res;

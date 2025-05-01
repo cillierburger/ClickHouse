@@ -1741,8 +1741,14 @@ void DatabaseCatalog::checkTablesCanBeExchangedWithNoCyclicDependencies(const St
         auto old_deps_1 = dependencies.removeDependencies(table_id_1);
         auto old_deps_2 = dependencies.removeDependencies(table_id_2);
 
-        bool cycle1 = dependencies.wouldCreateCycle(table_id_1, old_deps_2);
-        bool cycle2 = dependencies.wouldCreateCycle(table_id_2, old_deps_1);
+        TableNamesSet deps_for_1, deps_for_2;
+        for (const auto & dep : old_deps_2)
+            deps_for_1.emplace(QualifiedTableName{dep.database_name, dep.table_name});
+        for (const auto & dep : old_deps_1)
+            deps_for_2.emplace(QualifiedTableName{dep.database_name, dep.table_name});
+
+        bool cycle1 = dependencies.wouldCreateCycle(table_id_1, deps_for_1);
+        bool cycle2 = dependencies.wouldCreateCycle(table_id_2, deps_for_2);
 
         // Restore original dependencies
         dependencies.removeDependencies(table_id_1);
@@ -1760,10 +1766,10 @@ void DatabaseCatalog::checkTablesCanBeExchangedWithNoCyclicDependencies(const St
         }
     };
 
-	if(!referential_dependencies.empty())
-	    check(referential_dependencies);
-	if(!loading_dependencies.empty())
-    	check(loading_dependencies);
+    if (!referential_dependencies.empty())
+        check(referential_dependencies);
+    if (!loading_dependencies.empty())
+        check(loading_dependencies);
 }
 
 void DatabaseCatalog::cleanupStoreDirectoryTask()
