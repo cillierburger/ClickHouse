@@ -171,6 +171,8 @@ void TablesDependencyGraph::addDependencies(const QualifiedTableName & table_nam
 
 bool TablesDependencyGraph::removeDependency(const StorageID & table_id, const StorageID & dependency, bool remove_isolated_tables)
 {
+
+
     auto * table_node = findNode(table_id);
     if (!table_node)
         return false;
@@ -648,6 +650,10 @@ void TablesDependencyGraph::setNeedRecalculateLevels() const
 
 void TablesDependencyGraph::calculateLevels() const
 {
+	auto skip = true;
+	if (skip)
+		return;
+
     if (levels_calculated)
         return;
     levels_calculated = true;
