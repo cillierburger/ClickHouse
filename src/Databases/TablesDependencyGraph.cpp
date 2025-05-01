@@ -449,7 +449,8 @@ std::vector<StorageID> TablesDependencyGraph::getTables() const
 void TablesDependencyGraph::mergeWith(const TablesDependencyGraph & other)
 {
     for (const auto & other_node : other.nodes)
-        addDependencies(other_node->storage_id, TablesDependencyGraph::getDependencies(*other_node));
+		addDependencies(other_node->storage_id, TablesDependencyGraph::getDependencies(*other_node), add_only);
+       // addDependencies(other_node->storage_id, TablesDependencyGraph::getDependencies(*other_node));
 }
 
 
@@ -697,9 +698,6 @@ String TablesDependencyGraph::describeCyclicDependencies() const
 
 void TablesDependencyGraph::setNeedRecalculateLevels() const
 {
-	auto skip = true;
-	if (skip)
-		return;
     levels_calculated = false;
     nodes_sorted_by_level_lazy.clear();
 }
