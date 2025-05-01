@@ -1689,10 +1689,10 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
         }
     };
 
-    if (!new_referential_dependencies.empty())
+//    if (!new_referential_dependencies.empty())
         check(referential_dependencies, new_referential_dependencies);
 
-    if (!new_loading_dependencies.empty())
+//    if (!new_loading_dependencies.empty())
         check(loading_dependencies, new_loading_dependencies);
 }
 
