@@ -1706,7 +1706,7 @@ void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const Stora
         auto old_dependencies = dependencies.removeDependencies(from_table_id);
         dependencies.addDependencies(to_table_id, old_dependencies);
 
-		bool has_cycle = dependencies.wouldCreateCycle(to_table_id, old_dependencies);
+		bool has_cycle = dependencies.wouldCreateCycle(to_table_id, dependencies);
 
         dependencies.removeDependencies(to_table_id);
         dependencies.addDependencies(from_table_id, old_dependencies);
