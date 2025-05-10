@@ -607,7 +607,7 @@ void TablesDependencyGraph::calculateLevels() const
     if (levels_calculated)
         return;
     levels_calculated = true;
-    auto skip = true;
+    auto skip = false;
     if (skip)
         return;
 
