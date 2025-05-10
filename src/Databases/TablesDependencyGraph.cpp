@@ -351,6 +351,7 @@ TablesDependencyGraph::Node * TablesDependencyGraph::addOrUpdateNode(const Stora
             chassert(inserted_to_map);
         }
     }
+    node->is_dirty = true;
     return node;
 }
 
@@ -601,23 +602,95 @@ void TablesDependencyGraph::setNeedRecalculateLevels() const
 }
 
 
+// void TablesDependencyGraph::calculateLevels() const
+// {
+//
+//     if (levels_calculated)
+//         return;
+//     levels_calculated = true;
+//     // auto skip = false;
+//     // if (skip)
+//     //     return;
+//
+//     /// First find tables with no dependencies, add them to `nodes_sorted_by_level_lazy`.
+//     /// Then remove those tables from the dependency graph (we imitate that removing by decrementing `num_dependencies_to_count`),
+//     /// and find which tables have no dependencies now.
+//     /// Repeat until we have tables with no dependencies.
+//     /// In the end we expect all nodes from `nodes` to be added to `nodes_sorted_by_level_lazy`.
+//     /// If some nodes are still not added to `nodes_sorted_by_level_lazy` in the end then there is a cyclic dependency.
+//     /// Complexity: O(V + E)
+//
+//     nodes_sorted_by_level_lazy.clear();
+//     nodes_sorted_by_level_lazy.reserve(nodes.size());
+//     size_t current_level = 0;
+//
+//     /// Find tables with no dependencies.
+//     for (const auto & node_ptr : nodes)
+//     {
+//         const Node * node = node_ptr.get();
+//         node->num_dependencies_to_count = node->dependencies.size();
+//         if (!node->num_dependencies_to_count)
+//         {
+//             node->level = current_level;
+//             nodes_sorted_by_level_lazy.emplace_back(node);
+//         }
+//     }
+//
+//     size_t num_nodes_without_dependencies = nodes_sorted_by_level_lazy.size();
+//     ++current_level;
+//
+//     while (num_nodes_without_dependencies)
+//     {
+//         size_t begin = nodes_sorted_by_level_lazy.size() - num_nodes_without_dependencies;
+//         size_t end = nodes_sorted_by_level_lazy.size();
+//
+//         /// Decrement number of dependencies for each dependent table.
+//         for (size_t i = begin; i != end; ++i)
+//         {
+//             const Node * current_node = nodes_sorted_by_level_lazy[i];
+//             for (const Node * dependent_node : current_node->dependents)
+//             {
+//                 if (!dependent_node->num_dependencies_to_count)
+//                     throw Exception(ErrorCodes::LOGICAL_ERROR,
+//                                     "{}: Trying to decrement 0 dependencies counter for {}. It's a bug",
+//                                     name_for_logging, dependent_node->storage_id);
+//
+//                 if (!--dependent_node->num_dependencies_to_count)
+//                 {
+//                     dependent_node->level = current_level;
+//                     nodes_sorted_by_level_lazy.emplace_back(dependent_node);
+//                 }
+//             }
+//         }
+//
+//         if (nodes_sorted_by_level_lazy.size() > nodes.size())
+//             throw Exception(ErrorCodes::LOGICAL_ERROR,
+//                             "{}: Some tables were found more than once while passing through the dependency graph. "
+//                             "It's a bug", name_for_logging);
+//
+//         num_nodes_without_dependencies = nodes_sorted_by_level_lazy.size() - end;
+//         ++current_level;
+//     }
+//
+//     if (nodes_sorted_by_level_lazy.size() < nodes.size())
+//     {
+//         for (const auto & node_ptr : nodes)
+//         {
+//             const Node * node = node_ptr.get();
+//             if (node->num_dependencies_to_count)
+//             {
+//                 node->level = CYCLIC_LEVEL;
+//                 nodes_sorted_by_level_lazy.emplace_back(node);
+//             }
+//         }
+//     }
+// }
+
 void TablesDependencyGraph::calculateLevels() const
 {
-
     if (levels_calculated)
         return;
     levels_calculated = true;
-    // auto skip = false;
-    // if (skip)
-    //     return;
-
-    /// First find tables with no dependencies, add them to `nodes_sorted_by_level_lazy`.
-    /// Then remove those tables from the dependency graph (we imitate that removing by decrementing `num_dependencies_to_count`),
-    /// and find which tables have no dependencies now.
-    /// Repeat until we have tables with no dependencies.
-    /// In the end we expect all nodes from `nodes` to be added to `nodes_sorted_by_level_lazy`.
-    /// If some nodes are still not added to `nodes_sorted_by_level_lazy` in the end then there is a cyclic dependency.
-    /// Complexity: O(V + E)
 
     nodes_sorted_by_level_lazy.clear();
     nodes_sorted_by_level_lazy.reserve(nodes.size());
@@ -627,10 +700,14 @@ void TablesDependencyGraph::calculateLevels() const
     for (const auto & node_ptr : nodes)
     {
         const Node * node = node_ptr.get();
+        if (!node->is_dirty)
+            continue;  // Skip nodes that don't need recalculation
+
         node->num_dependencies_to_count = node->dependencies.size();
         if (!node->num_dependencies_to_count)
         {
             node->level = current_level;
+            node->is_dirty = false;  // Mark as clean after calculating level
             nodes_sorted_by_level_lazy.emplace_back(node);
         }
     }
@@ -649,6 +726,9 @@ void TablesDependencyGraph::calculateLevels() const
             const Node * current_node = nodes_sorted_by_level_lazy[i];
             for (const Node * dependent_node : current_node->dependents)
             {
+                if (!dependent_node->is_dirty)
+                    continue;  // Skip nodes that don't need recalculation
+
                 if (!dependent_node->num_dependencies_to_count)
                     throw Exception(ErrorCodes::LOGICAL_ERROR,
                                     "{}: Trying to decrement 0 dependencies counter for {}. It's a bug",
@@ -657,6 +737,7 @@ void TablesDependencyGraph::calculateLevels() const
                 if (!--dependent_node->num_dependencies_to_count)
                 {
                     dependent_node->level = current_level;
+                    dependent_node->is_dirty = false;  // Mark as clean after calculating level
                     nodes_sorted_by_level_lazy.emplace_back(dependent_node);
                 }
             }
@@ -676,15 +757,15 @@ void TablesDependencyGraph::calculateLevels() const
         for (const auto & node_ptr : nodes)
         {
             const Node * node = node_ptr.get();
-            if (node->num_dependencies_to_count)
+            if (node->is_dirty && node->num_dependencies_to_count)
             {
                 node->level = CYCLIC_LEVEL;
+                node->is_dirty = false;  // Mark as clean after setting cyclic level
                 nodes_sorted_by_level_lazy.emplace_back(node);
             }
         }
     }
 }
-
 
 const TablesDependencyGraph::NodesSortedByLevel & TablesDependencyGraph::getNodesSortedByLevel() const
 {
