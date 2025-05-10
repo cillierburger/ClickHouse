@@ -607,9 +607,9 @@ void TablesDependencyGraph::calculateLevels() const
     if (levels_calculated)
         return;
     levels_calculated = true;
-    auto skip = false;
-    if (skip)
-        return;
+    // auto skip = false;
+    // if (skip)
+    //     return;
 
     /// First find tables with no dependencies, add them to `nodes_sorted_by_level_lazy`.
     /// Then remove those tables from the dependency graph (we imitate that removing by decrementing `num_dependencies_to_count`),
