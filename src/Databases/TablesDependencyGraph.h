@@ -33,7 +33,7 @@ using LoggerPtr = std::shared_ptr<Poco::Logger>;
 ///    Referential dependencies are checked to decide if it's safe to drop a table (it can be unsafe if the table is used by another table).
 ///
 /// WARNING: This class doesn't have an embedded mutex, so it must be synchronized outside.
-[[clang::xray_always_instrument]] class TablesDependencyGraph
+class [[clang::xray_always_instrument]] TablesDependencyGraph
 {
 public:
     explicit TablesDependencyGraph(const String & name_for_logging_);

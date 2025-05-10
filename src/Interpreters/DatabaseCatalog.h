@@ -122,7 +122,7 @@ using TemporaryTablesMapping = std::map<String, TemporaryTableHolderPtr>;
 class BackgroundSchedulePoolTaskHolder;
 
 /// For some reason Context is required to get Storage from Database object
-[[clang::xray_always_instrument]] class DatabaseCatalog : boost::noncopyable, WithMutableContext
+class [[clang::xray_always_instrument]]  DatabaseCatalog : boost::noncopyable, WithMutableContext
 {
 public:
     /// Names of predefined databases.
