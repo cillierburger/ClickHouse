@@ -5,6 +5,8 @@
 
 #include <fmt/ranges.h>
 
+#include "iostream"
+
 namespace DB
 {
 
@@ -105,6 +107,8 @@ void TablesDependencyGraph::addDependency(const StorageID & table_id, const Stor
 
     // No cyclic check
     table_node->level = std::max(table_node->level, dependency_node->level + 1);
+    std::cout << "Level: " << table_node->level << std::endl;
+
 
     //setNeedRecalculateLevels();
 }
