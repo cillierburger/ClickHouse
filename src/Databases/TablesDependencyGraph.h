@@ -33,7 +33,7 @@ using LoggerPtr = std::shared_ptr<Poco::Logger>;
 ///    Referential dependencies are checked to decide if it's safe to drop a table (it can be unsafe if the table is used by another table).
 ///
 /// WARNING: This class doesn't have an embedded mutex, so it must be synchronized outside.
-class [[clang::xray_always_instrument]] TablesDependencyGraph
+class TablesDependencyGraph
 {
 public:
     explicit TablesDependencyGraph(const String & name_for_logging_);
@@ -50,13 +50,13 @@ public:
     void clear();
 
     /// Adds a single dependency "table_id" on "dependency".
-    void addDependency(const StorageID & table_id, const StorageID & dependency);
+   [[clang::xray_always_instrument]]  void addDependency(const StorageID & table_id, const StorageID & dependency);
 
     /// Adds a table with specified dependencies if there are no dependencies of the table in the graph yet;
     /// otherwise it replaces the dependencies of the table in the graph and shows a warning.
-    void addDependencies(const StorageID & table_id, const std::vector<StorageID> & dependencies);
-    void addDependencies(const StorageID & table_id, const TableNamesSet & dependencies);
-    void addDependencies(const QualifiedTableName & table_name, const TableNamesSet & dependencies);
+    [[clang::xray_always_instrument]]  void addDependencies(const StorageID & table_id, const std::vector<StorageID> & dependencies);
+    [[clang::xray_always_instrument]]  void addDependencies(const StorageID & table_id, const TableNamesSet & dependencies);
+    [[clang::xray_always_instrument]] void addDependencies(const QualifiedTableName & table_name, const TableNamesSet & dependencies);
 
     /// Removes a single dependency of "table_id" on "dependency".
     /// If "remove_isolated_tables" is set the function will also remove tables with no dependencies and no dependents
@@ -102,8 +102,8 @@ public:
 
     /// Checks that there are no cyclic dependencies in the graph.
     /// Cyclic dependencies are dependencies like "A->A" or "A->B->C->D->A".
-    void checkNoCyclicDependencies() const;
-    bool hasCyclicDependencies() const;
+    [[clang::xray_always_instrument]]  void checkNoCyclicDependencies() const;
+    [[clang::xray_always_instrument]]  bool hasCyclicDependencies() const;
     String describeCyclicDependencies() const;
     std::vector<StorageID> getTablesWithCyclicDependencies() const;
 
@@ -124,7 +124,7 @@ public:
 
     /// Calculates levels - this is required for checking cyclic dependencies, to sort tables by dependency, and to log the graph.
     /// This function is called automatically by the functions which need it, but can be invoked directly.
-    void calculateLevels() const;
+    [[clang::xray_always_instrument]]  void calculateLevels() const;
 
 private:
     struct Node
