@@ -144,6 +144,9 @@ private:
         /// Number of dependencies left, used only while we're calculating levels.
         mutable size_t num_dependencies_to_count = 0;
 
+        ///
+        mutable bool is_dirty = true;
+
         explicit Node(const StorageID & storage_id_) : storage_id(storage_id_) {}
     };
 
