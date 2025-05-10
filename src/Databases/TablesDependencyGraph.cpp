@@ -106,7 +106,7 @@ void TablesDependencyGraph::addDependency(const StorageID & table_id, const Stor
     // No cyclic check
     table_node->level = std::max(table_node->level, dependency_node->level + 1);
 
-    setNeedRecalculateLevels();
+    //setNeedRecalculateLevels();
 }
 
 
