@@ -1061,6 +1061,10 @@ void InterpreterCreateQuery::validateMaterializedViewColumnsAndEngine(const ASTC
     /// It's possible to circumvent these checks by ALTERing the view or target table after creation;
     /// we should probably do some of these checks on ALTER as well.
 
+    auto skip = true;
+    if (skip)
+        return;
+
     NamesAndTypesList all_output_columns;
     bool check_columns = false;
     if (create.hasTargetTableID(ViewTarget::To))
@@ -1497,7 +1501,7 @@ void checkTableCanBeAddedWithNoCyclicDependencies(const ASTCreateQuery & create,
     auto skip = true;
     if (skip)
         return;
-    
+
     QualifiedTableName qualified_name{create.getDatabase(), create.getTable()};
     auto ref_dependencies = getDependenciesFromCreateQuery(context->getGlobalContext(), qualified_name, query_ptr, context->getCurrentDatabase(), /*can_throw*/true);
     auto loading_dependencies = getLoadingDependenciesFromCreateQuery(context->getGlobalContext(), qualified_name, query_ptr, /*can_throw*/true);

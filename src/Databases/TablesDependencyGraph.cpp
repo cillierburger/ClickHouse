@@ -606,6 +606,12 @@ void TablesDependencyGraph::calculateLevels() const
         return;
     levels_calculated = true;
 
+    LOG_WARNING(
+        getLogger(),
+        "Calculating levels");
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+
     /// First find tables with no dependencies, add them to `nodes_sorted_by_level_lazy`.
     /// Then remove those tables from the dependency graph (we imitate that removing by decrementing `num_dependencies_to_count`),
     /// and find which tables have no dependencies now.
@@ -678,6 +684,14 @@ void TablesDependencyGraph::calculateLevels() const
             }
         }
     }
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+
+    LOG_WARNING(
+        getLogger(),
+        "Calculating levels took {} microseconds", duration.count());
+
 }
 
 
