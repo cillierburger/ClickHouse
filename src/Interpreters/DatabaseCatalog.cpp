@@ -1558,9 +1558,10 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
     const TableNamesSet & new_referential_dependencies,
     const TableNamesSet & new_loading_dependencies)
 {
-   auto skip = true;
-   if (skip)
-    return;
+    auto skip = true;
+    
+    if (skip)
+      return;
 
     std::lock_guard lock{databases_mutex};
 
@@ -1598,9 +1599,10 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
 void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const StorageID & from_table_id, const StorageID & to_table_id)
 {
 
-   auto skip = true;
-   if (skip)
-    return;
+    auto skip = true;
+    
+    if (skip)
+      return;
 
     std::lock_guard lock{databases_mutex};
 
@@ -1635,9 +1637,12 @@ void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const Stora
 
 void DatabaseCatalog::checkTablesCanBeExchangedWithNoCyclicDependencies(const StorageID & table_id_1, const StorageID & table_id_2)
 {
-   auto skip = true;
-   if (skip)
-    return;
+
+    auto skip = true;
+    
+    if (skip)
+      return;
+
 
     std::lock_guard lock{databases_mutex};
 
