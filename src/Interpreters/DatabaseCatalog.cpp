@@ -1559,7 +1559,7 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
     const TableNamesSet & new_loading_dependencies)
 {
    auto skip = true;
-   if(skip)
+   if (skip)
     return;
 
     std::lock_guard lock{databases_mutex};
@@ -1599,7 +1599,7 @@ void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const Stora
 {
 
    auto skip = true;
-   if(skip)
+   if (skip)
     return;
 
     std::lock_guard lock{databases_mutex};
@@ -1636,7 +1636,7 @@ void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const Stora
 void DatabaseCatalog::checkTablesCanBeExchangedWithNoCyclicDependencies(const StorageID & table_id_1, const StorageID & table_id_2)
 {
    auto skip = true;
-   if(skip)
+   if (skip)
     return;
 
     std::lock_guard lock{databases_mutex};
