@@ -280,7 +280,15 @@ void DatabaseOnDisk::createTable(
     }
 
     commitCreateTable(create, table, table_metadata_tmp_path, table_metadata_path, local_context);
-    removeDetachedPermanentlyFlag(local_context, table_name, table_metadata_path, false);
+
+    /// The detached-permanently flag (.sql.detached) is only ever created by DETACH PERMANENTLY.
+    /// A fresh CREATE TABLE (create.attach == false) starts from no prior state and the flag file
+    /// cannot exist, so the unconditional unlink syscall here was wasted on the hot path. Restrict
+    /// it to the ATTACH case where a previous DETACH PERMANENTLY may have left the flag behind and
+    /// the cleanup is meaningful. (The attach_short_syntax branch above already invokes the same
+    /// cleanup explicitly with the assertion that metadata exists.)
+    if (create.attach)
+        removeDetachedPermanentlyFlag(local_context, table_name, table_metadata_path, false);
 }
 
 /// If the table was detached permanently we will have a flag file with
