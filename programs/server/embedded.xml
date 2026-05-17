@@ -1,7 +1,7 @@
 <!-- Config that is used when server is run without config file. -->
 <clickhouse>
     <logger>
-        <level>trace</level>
+        <level>error</level>
         <console>true</console>
     </logger>
 
