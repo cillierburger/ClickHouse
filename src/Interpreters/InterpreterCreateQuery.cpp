@@ -1508,8 +1508,55 @@ void InterpreterCreateQuery::assertOrSetUUID(ASTCreateQuery & create, const Data
 namespace
 {
 
+/// Quickly rejects CREATE queries that cannot possibly produce dependencies on other tables.
+///
+/// `getDependenciesFromCreateQuery` and `getLoadingDependenciesFromCreateQuery` walk the entire
+/// CREATE AST; for a plain CREATE TABLE this is wasted work because the AST has no constructs
+/// (no SELECT, no AS table, no targets, no special engines, no column DEFAULT/TTL expressions)
+/// that the visitors care about. Calling both visitors is on the hot path twice per CREATE (once
+/// for the cyclic-dependency check, once for adding to the catalog), so for high-throughput
+/// table-creation workloads the AST walks dominate. Skipping when no dep source is present
+/// produces the same end state (no dependencies extracted, catalog functions early-exit on
+/// empty sets) and is much cheaper.
+///
+/// Conservative: any "maybe could ref a table" path returns true.
+bool createMayProduceDependencies(const ASTCreateQuery & create)
+{
+    if (create.select || create.targets || create.as_table_function)
+        return true;
+    if (!create.as_table.empty())
+        return true;
+    if (create.is_dictionary || create.is_materialized_view || create.is_window_view)
+        return true;
+    if (create.storage)
+    {
+        if (create.storage->ttl_table)
+            return true;
+        if (create.storage->engine)
+        {
+            const auto & name = create.storage->engine->name;
+            if (name == "Distributed" || name == "Dictionary" || name == "Buffer"
+                || name == "Alias" || name == "MaterializedPostgreSQL")
+                return true;
+        }
+    }
+    if (create.columns_list && create.columns_list->columns)
+    {
+        for (const auto & col : create.columns_list->columns->children)
+        {
+            const auto * decl = col->as<ASTColumnDeclaration>();
+            if (decl && (decl->getDefaultExpression() || decl->getTTL()))
+                return true;
+        }
+    }
+    return false;
+}
+
 void addTableDependencies(const ASTCreateQuery & create, const ASTPtr & query_ptr, const ContextPtr & context)
 {
+    if (!createMayProduceDependencies(create))
+        return;
+
     QualifiedTableName qualified_name{create.getDatabase(), create.getTable()};
 
     auto ref_dependencies = getDependenciesFromCreateQuery(context->getGlobalContext(), qualified_name, query_ptr, context->getCurrentDatabase());
@@ -1519,6 +1566,9 @@ void addTableDependencies(const ASTCreateQuery & create, const ASTPtr & query_pt
 
 void checkTableCanBeAddedWithNoCyclicDependencies(const ASTCreateQuery & create, const ASTPtr & query_ptr, const ContextPtr & context)
 {
+    if (!createMayProduceDependencies(create))
+        return;
+
     QualifiedTableName qualified_name{create.getDatabase(), create.getTable()};
     auto ref_dependencies = getDependenciesFromCreateQuery(context->getGlobalContext(), qualified_name, query_ptr, context->getCurrentDatabase(), /*can_throw*/true);
     auto loading_dependencies = getLoadingDependenciesFromCreateQuery(context->getGlobalContext(), qualified_name, query_ptr, /*can_throw*/true);
