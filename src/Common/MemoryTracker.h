@@ -183,7 +183,11 @@ public:
 
     void setSampleProbability(double value)
     {
+        bool was_enabled = sample_probability >= 0;
+        bool is_enabled = value >= 0;
         sample_probability = value;
+        if (was_enabled != is_enabled)
+            num_trackers_with_sampling.fetch_add(is_enabled ? 1 : -1, std::memory_order_relaxed);
     }
 
     struct SampleConfig
@@ -193,13 +197,15 @@ public:
         UInt64 max_allocation_size = 0;
     };
 
+    /// Global fast-path hint: if zero, no tracker anywhere has sampling enabled, so the
+    /// per-allocation walk up the parent chain can be skipped entirely.
+    static inline std::atomic<int> num_trackers_with_sampling{0};
+
     /// Resolve sample config by traversing the parent chain.
-    /// `sample_probability == -1` means "inherit from parent"; any non-negative value (including 0)
-    /// is an explicit override that stops the walk. Callers are expected to push the query-level
-    /// value only when the user actually changed it from the default, so that the default path
-    /// leaves the group tracker at -1 and falls through to `total_memory_tracker_sample_probability`.
     SampleConfig getResolvedSampleConfig() const
     {
+        if (num_trackers_with_sampling.load(std::memory_order_relaxed) == 0)
+            return {};
         if (sample_probability >= 0)
             return {sample_probability, min_allocation_size_bytes, max_allocation_size_bytes};
         if (auto * loaded_next = parent.load(std::memory_order_relaxed))
