@@ -718,9 +718,17 @@ std::vector<std::vector<StorageID>> TablesDependencyGraph::getTablesSplitByDepen
 
 void TablesDependencyGraph::log() const
 {
+    /// `getNodesSortedByLevel()` triggers a full O(N) level recomputation. When this function is
+    /// called from hot paths (e.g. `DatabaseCatalog::addDependencies` runs it per CREATE), the
+    /// graph traversal turns into O(N²) over a sequence of creates. Skip the entire body when
+    /// trace logging is disabled, since this function only emits trace messages.
+    auto log_ptr = getLogger();
+    if (!log_ptr->is(Poco::Message::PRIO_TRACE))
+        return;
+
     if (nodes.empty())
     {
-        LOG_TRACE(getLogger(), "No tables");
+        LOG_TRACE(log_ptr, "No tables");
         return;
     }
 
