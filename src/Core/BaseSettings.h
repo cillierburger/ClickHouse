@@ -337,6 +337,11 @@ private:
 
 protected:
     std::conditional_t<Traits::allow_custom_settings, CustomSettingMap, boost::blank> custom_settings_map;
+    /// True if any field was ever mutated through set()/read()/readBinary()/applyChange().
+    /// Used by resetToDefault() to skip the ~2000-field walk when nothing has changed.
+    /// This is a fast-path correctness hint, not a strict invariant: it may be true
+    /// while the object is at default values (e.g. after a set-then-reset round-trip).
+    bool any_field_changed = false;
 };
 
 template <typename TTraits>
@@ -348,6 +353,7 @@ void BaseSettings<TTraits>::set(std::string_view name, const Field & value)
         accessor.setValue(*this, index, value);
     else
         getCustomSetting(name) = value;
+    any_field_changed = true;
 }
 
 template <typename TTraits>
@@ -392,6 +398,19 @@ template <typename TTraits>
 SettingsChanges BaseSettings<TTraits>::changes() const
 {
     SettingsChanges res;
+    /// Fast path: nothing has ever been changed on this object. The iterator below skips unchanged
+    /// builtins anyway, but constructing it still hits `Accessor::instance()` and walks ~2000 fields
+    /// in `doSkip`. On the per-query path (TCPHandler calls this on fresh `passed_settings`) the
+    /// result is always empty, so this avoids ~1% of CPU per query.
+    if (!any_field_changed)
+    {
+        if constexpr (Traits::allow_custom_settings)
+        {
+            for (const auto & [name, value] : custom_settings_map)
+                res.emplace_back(name, static_cast<Field>(value));
+        }
+        return res;
+    }
     for (const auto & field : *this)
         res.emplace_back(field.getName(), field.getValue());
     return res;
@@ -413,6 +432,16 @@ void BaseSettings<TTraits>::applyChanges(const SettingsChanges & changes)
 template <typename TTraits>
 void BaseSettings<TTraits>::resetToDefault()
 {
+    /// Fast path: nothing has ever been changed on this object, so the ~2000-field walk is pure waste.
+    /// This shows up as ~25% of CPU on CREATE-TABLE-heavy workloads because TCPHandler constructs a
+    /// fresh `Settings` per query and `Settings::read()` calls this unconditionally.
+    if (!any_field_changed)
+    {
+        if constexpr (Traits::allow_custom_settings)
+            custom_settings_map.clear();
+        return;
+    }
+
     const auto & accessor = Traits::Accessor::instance();
     for (size_t i = 0; i < accessor.size(); i++)
     {
@@ -422,6 +451,8 @@ void BaseSettings<TTraits>::resetToDefault()
 
     if constexpr (Traits::allow_custom_settings)
         custom_settings_map.clear();
+
+    any_field_changed = false;
 }
 
 template <typename TTraits>
@@ -617,6 +648,7 @@ void BaseSettings<TTraits>::readBinary(ReadBuffer & in)
             BaseSettingsHelpers::throwSettingNotFound(name);
 
         accessor.readBinary(*this, index, in);
+        any_field_changed = true;
     }
 }
 
@@ -653,10 +685,12 @@ void BaseSettings<TTraits>::read(ReadBuffer & in, SettingsWriteFormat format)
                 accessor.setValueString(*this, index, BaseSettingsHelpers::readString(in));
             else
                 accessor.readBinary(*this, index, in);
+            any_field_changed = true;
         }
         else if (is_custom && Traits::allow_custom_settings)
         {
             getCustomSetting(name).parseFromString(BaseSettingsHelpers::readString(in));
+            any_field_changed = true;
         }
         else if (is_important)
         {
