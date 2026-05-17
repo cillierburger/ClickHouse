@@ -581,10 +581,46 @@ namespace
 
 CreateQueryDependencies getDependenciesFromCreateQuery(const ContextPtr & global_global_context, const QualifiedTableName & table_name, const ASTPtr & ast, const String & current_database, bool can_throw, bool validate_current_database)
 {
+    /// Per-CREATE workloads invoke this twice on the same AST (once during cycle-check, once during
+    /// `addTableDependencies`). The visit is a non-trivial AST walk that scales with query size, so
+    /// we cache the most recent result on this thread. Keyed by AST pointer + the parameters that
+    /// affect the result — the AST is immutable for the duration of the CREATE, and a thread
+    /// processes one query at a time, so the same `ast.get()` returning twice in a row is reliably
+    /// the same query and the cached `CreateQueryDependencies` is reusable.
+    struct CacheEntry
+    {
+        const IAST * ast_ptr = nullptr;
+        const Context * context_ptr = nullptr;
+        String current_database;
+        QualifiedTableName table_name;
+        bool can_throw = false;
+        bool validate_current_database = false;
+        CreateQueryDependencies result;
+    };
+    thread_local CacheEntry cache;
+    const IAST * raw_ast = ast.get();
+    if (cache.ast_ptr == raw_ast
+        && cache.context_ptr == global_global_context.get()
+        && cache.current_database == current_database
+        && cache.table_name == table_name
+        && cache.can_throw == can_throw
+        && cache.validate_current_database == validate_current_database)
+    {
+        return cache.result;
+    }
+
     DDLDependencyVisitor::Data data{global_global_context, table_name, ast, current_database, can_throw, validate_current_database};
     DDLDependencyVisitor::Visitor visitor{data};
     visitor.visit(ast);
-    return {data.getDependencies(), data.getMvToDependency(), data.getMvFromDependency()};
+    CreateQueryDependencies result{data.getDependencies(), data.getMvToDependency(), data.getMvFromDependency()};
+    cache.ast_ptr = raw_ast;
+    cache.context_ptr = global_global_context.get();
+    cache.current_database = current_database;
+    cache.table_name = table_name;
+    cache.can_throw = can_throw;
+    cache.validate_current_database = validate_current_database;
+    cache.result = result;
+    return result;
 }
 
 TableNamesSet getDependenciesFromDictionaryNestedSelectQuery(const ContextPtr & global_context, const QualifiedTableName & table_name, const ASTPtr & ast, const String & select_query, const String & current_database, bool can_throw)

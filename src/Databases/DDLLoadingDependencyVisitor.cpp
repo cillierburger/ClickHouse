@@ -25,8 +25,33 @@ using TableLoadingDependenciesVisitor = DDLLoadingDependencyVisitor::Visitor;
 TableNamesSet getLoadingDependenciesFromCreateQuery(ContextPtr global_context, const QualifiedTableName & table, const ASTPtr & ast, bool can_throw)
 {
     assert(global_context == global_context->getGlobalContext());
+
+    /// Same caching scheme as `getDependenciesFromCreateQuery` — InterpreterCreateQuery invokes
+    /// this twice per CREATE (cycle-check + addTableDependencies), and a thread handles one query
+    /// at a time, so AST identity is sufficient to reuse the visitor result.
+    struct CacheEntry
+    {
+        const IAST * ast_ptr = nullptr;
+        const Context * context_ptr = nullptr;
+        String default_database;
+        QualifiedTableName table_name;
+        bool can_throw = false;
+        TableNamesSet dependencies;
+    };
+    thread_local CacheEntry cache;
+    const IAST * raw_ast = ast.get();
+    const String default_database = global_context->getCurrentDatabase();
+    if (cache.ast_ptr == raw_ast
+        && cache.context_ptr == global_context.get()
+        && cache.default_database == default_database
+        && cache.table_name == table
+        && cache.can_throw == can_throw)
+    {
+        return cache.dependencies;
+    }
+
     TableLoadingDependenciesVisitor::Data data;
-    data.default_database = global_context->getCurrentDatabase();
+    data.default_database = default_database;
     data.create_query = ast;
     data.global_context = global_context;
     data.table_name = table;
@@ -34,6 +59,12 @@ TableNamesSet getLoadingDependenciesFromCreateQuery(ContextPtr global_context, c
     TableLoadingDependenciesVisitor visitor{data};
     visitor.visit(ast);
     data.dependencies.erase(table);
+    cache.ast_ptr = raw_ast;
+    cache.context_ptr = global_context.get();
+    cache.default_database = default_database;
+    cache.table_name = table;
+    cache.can_throw = can_throw;
+    cache.dependencies = data.dependencies;
     return data.dependencies;
 }
 
