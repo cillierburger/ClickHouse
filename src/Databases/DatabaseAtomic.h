@@ -91,6 +91,13 @@ protected:
     void createDirectories();
     void createDirectoriesUnlocked() TSA_REQUIRES(mutex);
 
+    /// Once `createDirectoriesUnlocked` has succeeded, the directories and the metadata symlink
+    /// are in place for the lifetime of this DatabaseAtomic. The hot CREATE TABLE path calls
+    /// `createDirectoriesUnlocked` on every `attachTable`; without this flag, every CREATE redoes
+    /// 3–4 `fs::create_directories` syscalls plus a symlink check that profiler runs show as
+    /// non-trivial under high-throughput table creation.
+    bool directories_created TSA_GUARDED_BY(mutex) = false;
+
     void tryCreateMetadataSymlink();
 
     virtual bool allowMoveTableToOtherDatabaseEngine(IDatabase & /*to_database*/) const { return false; }

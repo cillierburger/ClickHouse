@@ -94,6 +94,11 @@ void DatabaseAtomic::createDirectories()
 
 void DatabaseAtomic::createDirectoriesUnlocked()
 {
+    /// Hot path: `attachTable` runs this on every CREATE TABLE. The directories and symlinks live
+    /// for the database's whole lifetime, so doing the fs calls once is enough.
+    if (directories_created)
+        return;
+
     auto db_disk = getDisk();
 
     DatabaseOnDisk::createDirectoriesUnlocked();
@@ -101,6 +106,8 @@ void DatabaseAtomic::createDirectoriesUnlocked()
     if (db_disk->isSymlinkSupported())
         db_disk->createDirectories(path_to_table_symlinks);
     tryCreateMetadataSymlink();
+
+    directories_created = true;
 }
 
 String DatabaseAtomic::getTableDataPath(const String & table_name) const
