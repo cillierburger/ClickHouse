@@ -1670,7 +1670,11 @@ void DatabaseCatalog::addDependencies(
         for (const auto & new_view_dependency : new_view_dependencies)
             view_dependencies.addDependency(StorageID{new_view_dependency}, StorageID{table_name});
     }
-    view_dependencies.log();
+    /// Note: previously this called `view_dependencies.log()` here. That call walks every node in
+    /// the graph and runs `getNodesSortedByLevel()` (a full O(N) topo sort). Because this function
+    /// is invoked once per CREATE TABLE / CREATE MV that has any dependencies, the per-CREATE work
+    /// grew with the total number of tables in the graph, turning sequences of CREATEs into O(N²).
+    /// The debug trace was not load-bearing; remove it from the hot path.
 }
 
 void DatabaseCatalog::addDependencies(
@@ -1822,6 +1826,15 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
 
     auto check = [&](TablesDependencyGraph & dependencies, const TableNamesSet & new_dependencies)
     {
+        /// A cycle through table_id requires both an incoming and an outgoing edge incident on it.
+        /// We are about to add only outgoing edges; if the table currently has no dependents in the
+        /// graph (the common CREATE case — nothing references it yet because it didn't exist), no
+        /// cycle can form and the O(N) cycle scan is unnecessary. This matters for hot loops that
+        /// create many tables with dependencies (e.g. chained materialized views), where the prior
+        /// behavior produced O(N²) total work.
+        if (!dependencies.hasDependents(table_id))
+            return;
+
         auto old_dependencies = dependencies.removeDependencies(table_id);
         dependencies.addDependencies(table_name, new_dependencies);
         auto restore_dependencies = [&]()
