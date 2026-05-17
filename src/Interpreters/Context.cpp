@@ -1175,18 +1175,27 @@ struct ContextSharedPart : boost::noncopyable
     }
 };
 
-void ContextSharedMutex::lockImpl()
+void ContextSharedMutex::lockImpl() TSA_NO_THREAD_SAFETY_ANALYSIS
 {
     ProfileEvents::increment(ProfileEvents::ContextLock);
+    /// Fast path: when the lock is uncontended, skip the Stopwatch (two `clock_gettime` syscalls)
+    /// and the `ContextLockWait` CurrentMetrics increment. The Context shared mutex is acquired
+    /// dozens of times per query just to read shared state, and in steady state nearly every
+    /// acquire is uncontended — recording a zero wait time on each one was a significant amount
+    /// of overhead for no observability gain.
+    if (likely(mutex.try_lock()))
+        return;
     CurrentMetrics::Increment increment{CurrentMetrics::ContextLockWait};
     Stopwatch watch;
     Base::lockImpl();
     ProfileEvents::increment(ProfileEvents::ContextLockWaitMicroseconds, watch.elapsedMicroseconds());
 }
 
-void ContextSharedMutex::lockSharedImpl()
+void ContextSharedMutex::lockSharedImpl() TSA_NO_THREAD_SAFETY_ANALYSIS
 {
     ProfileEvents::increment(ProfileEvents::ContextLock);
+    if (likely(mutex.try_lock_shared()))
+        return;
     CurrentMetrics::Increment increment{CurrentMetrics::ContextLockWait};
     Stopwatch watch;
     Base::lockSharedImpl();
