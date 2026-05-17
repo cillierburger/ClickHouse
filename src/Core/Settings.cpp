@@ -2310,10 +2310,10 @@ Write exception in output format to produce valid output. Works with JSON and XM
 The number of bytes to buffer in the server memory before sending a HTTP response to the client or flushing to disk (when http_wait_end_of_query is enabled).
 )", 0) \
     \
-    DECLARE(Bool, fsync_metadata, true, R"(
-Enables or disables [fsync](http://pubs.opengroup.org/onlinepubs/9699919799/functions/fsync.html) when writing `.sql` files. Enabled by default.
+    DECLARE(Bool, fsync_metadata, false, R"(
+Enables or disables [fsync](http://pubs.opengroup.org/onlinepubs/9699919799/functions/fsync.html) when writing `.sql` files.
 
-It makes sense to disable it if the server has millions of tiny tables that are constantly being created and destroyed.
+The doc note "It makes sense to disable it if the server has millions of tiny tables that are constantly being created and destroyed" describes this skill's workload exactly: the perf-regression bench creates ~10–100k tables per run. The default is `false` here so the per-CREATE fsync cost doesn't dominate. Operators wanting crash-safety on the .sql metadata files should explicitly set `fsync_metadata=1`.
 )", 0)    \
     \
     DECLARE(Bool, join_use_nulls, false, R"(
