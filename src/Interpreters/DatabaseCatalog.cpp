@@ -59,6 +59,7 @@ namespace DB
 
 namespace ServerSetting
 {
+    extern const ServerSettingsBool check_dependency_cycles_on_ddl;
     extern const ServerSettingsUInt64 database_atomic_delay_before_drop_table_sec;
     extern const ServerSettingsUInt64 database_catalog_drop_error_cooldown_sec;
     extern const ServerSettingsUInt64 database_catalog_unused_dir_cleanup_period_sec;
@@ -1820,6 +1821,12 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
     if (new_referential_dependencies.empty() && new_loading_dependencies.empty())
         return;
 
+    /// Global escape hatch: operators can disable the per-DDL cyclic-dependency check on
+    /// workloads where they know cycles cannot occur. Startup and replica-recovery checks
+    /// are still run unconditionally; only this runtime hot path is bypassed.
+    if (!getContext()->getServerSettings()[ServerSetting::check_dependency_cycles_on_ddl])
+        return;
+
     std::lock_guard lock{databases_mutex};
 
     StorageID table_id = StorageID{table_name};
@@ -1864,6 +1871,10 @@ void DatabaseCatalog::checkTableCanBeAddedWithNoCyclicDependencies(
 
 void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const StorageID & from_table_id, const StorageID & to_table_id)
 {
+    /// See `check_dependency_cycles_on_ddl` docstring in `ServerSettings.cpp` for tradeoffs.
+    if (!getContext()->getServerSettings()[ServerSetting::check_dependency_cycles_on_ddl])
+        return;
+
     std::lock_guard lock{databases_mutex};
 
     auto check = [&](TablesDependencyGraph & dependencies)
@@ -1911,6 +1922,10 @@ void DatabaseCatalog::checkTableCanBeRenamedWithNoCyclicDependencies(const Stora
 
 void DatabaseCatalog::checkTablesCanBeExchangedWithNoCyclicDependencies(const StorageID & table_id_1, const StorageID & table_id_2)
 {
+    /// See `check_dependency_cycles_on_ddl` docstring in `ServerSettings.cpp` for tradeoffs.
+    if (!getContext()->getServerSettings()[ServerSetting::check_dependency_cycles_on_ddl])
+        return;
+
     std::lock_guard lock{databases_mutex};
 
     auto check = [&](TablesDependencyGraph & dependencies)

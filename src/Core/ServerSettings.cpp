@@ -364,6 +364,24 @@ namespace
     - [merges_mutations_memory_usage_soft_limit](/operations/server-configuration-parameters/settings#merges_mutations_memory_usage_soft_limit)
     )", 0) \
     DECLARE(Bool, allow_use_jemalloc_memory, true, R"(Allows to use jemalloc memory.)", 0) \
+    DECLARE(Bool, check_dependency_cycles_on_ddl, true, R"(
+Whether to check for cyclic dependencies on every `CREATE`, `RENAME`, and `EXCHANGE` DDL operation.
+
+The runtime check runs a topological sort over the entire catalog dependency graph (referential
+and loading dependencies of every table in every database) and is held under the global
+`DatabaseCatalog::databases_mutex`. On multi-tenant servers with many tables, the scan dominates
+per-query CPU under concurrent DDL workloads such as `CREATE OR REPLACE TABLE` floods.
+
+Set to `false` to skip the runtime check entirely. Cycles are still detected on server startup
+(`TablesLoader`) and on `DatabaseReplicated` replica recovery (`recoverLostReplica`); only the
+per-DDL runtime check is affected.
+
+WARNING: with this disabled, a cycle that is introduced at runtime will surface later as an
+infinite loop or confusing failure in dependency-ordered operations (`DROP` cascades, MV refresh
+chains, replica restart). Enable only on workloads where you know cyclic dependencies cannot
+occur — for example, single-writer pipelines that only `CREATE OR REPLACE TABLE` and never add
+new referential dependencies.
+)", 0) \
     DECLARE(Bool, use_separate_cache_arena, true, R"(
     Enable a dedicated jemalloc arena for cache allocations (mark cache, uncompressed cache, page cache).
     Isolates cache data from query-processing allocations, reducing memory fragmentation.
