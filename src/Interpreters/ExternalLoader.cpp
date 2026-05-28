@@ -1,5 +1,6 @@
 #include <Interpreters/ExternalLoader.h>
 
+#include <chrono>
 #include <mutex>
 #include <unordered_set>
 #include <base/chrono_io.h>
@@ -108,6 +109,9 @@ public:
         auto * ptr = repository.get();
         repositories.emplace(ptr, RepositoryInfo{std::move(repository), {}});
         need_collect_object_configs = true;
+        /// Force the next `read()` to re-walk: a new repository may carry loadables
+        /// that the cached `object_configs` doesn't know about.
+        last_full_read_time = {};
     }
 
     void removeConfigRepository(Repository * repository)
@@ -118,6 +122,7 @@ public:
             return;
         repositories.erase(it);
         need_collect_object_configs = true;
+        last_full_read_time = {};
     }
 
     void setConfigSettings(const ExternalLoaderConfigSettings & settings_)
@@ -134,12 +139,31 @@ public:
 
     using ObjectConfigsPtr = std::shared_ptr<const ObjectConfigs>;
 
+    /// How long the result of a full repository walk stays valid before the next caller
+    /// is forced to re-walk. Walks are expensive (O(N_loadables) under the reader mutex)
+    /// and on multi-tenant catalogs with thousands of dictionaries the walk serializes
+    /// concurrent `SYSTEM RELOAD DICTIONARY` calls. The window must be short enough that
+    /// newly created/dropped loadables become visible within "human" time; 1 second is
+    /// the same order as the smallest dictionary LIFETIME we ever see in practice, so
+    /// nothing observable is broken by the cache.
+    static constexpr std::chrono::milliseconds READ_CACHE_VALIDITY{1000};
+
     /// Reads all repositories.
     ObjectConfigsPtr read()
     {
         std::lock_guard lock(mutex);
+        /// Fast path: if a previous caller did a full walk recently and nothing has
+        /// invalidated the cache (e.g. add/removeConfigRepository), return the cached
+        /// `object_configs`. Callers compare by pointer identity downstream
+        /// (`LoadingDispatcher::setConfiguration` short-circuits when the configs
+        /// pointer is unchanged), so reusing the same shared_ptr is what makes the
+        /// downstream dispatcher walk a no-op as well.
+        if (object_configs && !need_collect_object_configs
+            && (std::chrono::steady_clock::now() - last_full_read_time) < READ_CACHE_VALIDITY)
+            return object_configs;
         readRepositories();
         collectObjectConfigs();
+        last_full_read_time = std::chrono::steady_clock::now();
         return object_configs;
     }
 
@@ -150,6 +174,7 @@ public:
         std::lock_guard lock(mutex);
         readRepositories(repository_name);
         collectObjectConfigs();
+        last_full_read_time = std::chrono::steady_clock::now();
         return object_configs;
     }
 
@@ -383,6 +408,11 @@ private:
     std::unordered_map<Repository *, RepositoryInfo> repositories;
     ObjectConfigsPtr object_configs;
     bool need_collect_object_configs = false;
+    /// Last time `read()` performed a full walk of all repositories. The
+    /// `READ_CACHE_VALIDITY` window lets concurrent `SYSTEM RELOAD DICTIONARY`
+    /// calls reuse the cached `object_configs` instead of each walking the
+    /// repositories under this mutex.
+    std::chrono::steady_clock::time_point last_full_read_time{};
     size_t counter = 0;
 };
 
