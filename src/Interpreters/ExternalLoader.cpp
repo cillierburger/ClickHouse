@@ -432,7 +432,20 @@ public:
     {
         std::unique_lock lock{mutex};
         infos.clear(); /// We clear this map to tell the threads that we don't want any load results anymore.
+        publishKnownNamesSnapshot();
         joinLoadingThreads(lock);
+    }
+
+    /// Rebuild the atomic snapshot of all known names so that `has()` can be
+    /// answered without ever acquiring `mutex`. Must be called while holding
+    /// `mutex` (to get a consistent view of `infos`).
+    void publishKnownNamesSnapshot()
+    {
+        auto snapshot = std::make_shared<std::unordered_set<String>>();
+        snapshot->reserve(infos.size());
+        for (const auto & [name, _] : infos)
+            snapshot->insert(name);
+        std::atomic_store_explicit(&known_names_snapshot, std::move(snapshot), std::memory_order_release);
     }
 
     void joinLoadingThreads()
@@ -538,6 +551,10 @@ public:
                 infos.erase(it);
             }
         }
+
+        /// Publish the updated name set so that `has()` can be answered
+        /// lock-free without blocking on `mutex`.
+        publishKnownNamesSnapshot();
 
         /// Maybe we have just added new objects which require to be loaded
         /// or maybe we have just removed object which were been loaded,
@@ -679,8 +696,7 @@ public:
 
     bool has(const String & name) const
     {
-        std::lock_guard lock{mutex};
-        return infos.contains(name);
+        return std::atomic_load_explicit(&known_names_snapshot, std::memory_order_acquire)->contains(name);
     }
 
     /// Starts reloading all the object which update time is earlier than now.
@@ -1265,6 +1281,13 @@ private:
     std::condition_variable event;
     ObjectConfigsPtr configs;
     std::unordered_map<String, Info> infos;
+    /// Lock-free snapshot of infos keys, rebuilt by publishKnownNamesSnapshot
+    /// inside setConfiguration (while holding mutex). Lets has() answer
+    /// existence checks without ever acquiring mutex.
+    /// Accessed via std::atomic_load/store (the C++17 shared_ptr overloads)
+    /// because libc++ here doesn't expose std::atomic<shared_ptr<T>>.
+    mutable std::shared_ptr<std::unordered_set<String>> known_names_snapshot =
+        std::make_shared<std::unordered_set<String>>();
     bool always_load_everything = false;
     std::atomic<bool> enable_async_loading = false;
     std::unordered_map<size_t, ThreadFromGlobalPool> loading_threads;
