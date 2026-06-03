@@ -603,6 +603,11 @@ namespace ErrorCodes
     Use 0 to disable the timeout (parts below the minimum level are postponed indefinitely until merged).
     Default: 300 (force fetch after 5 minutes).
     )", 0) \
+    DECLARE(Bool, use_direct_io_for_insert, false, R"(
+    Use `O_DIRECT` when writing new parts to local disks during `INSERT`.
+    Overrides the query-level `use_direct_io_for_inserts` setting for this table.
+    See the query setting documentation for details.
+    )", 0) \
     DECLARE(Bool, fsync_after_insert, false, R"(
     Do fsync for every inserted part. Significantly decreases performance of
     inserts, not recommended to use with wide parts.

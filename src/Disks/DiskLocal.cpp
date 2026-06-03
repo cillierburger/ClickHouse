@@ -21,6 +21,7 @@
 #include <sys/stat.h>
 
 #include <Disks/IO/WriteBufferFromTemporaryFile.h>
+#include <IO/WriteBufferFromFileDirectIO.h>
 
 #include <Common/randomSeed.h>
 #include <IO/ReadHelpers.h>
@@ -375,6 +376,17 @@ std::unique_ptr<ReadBufferFromFileBase> DiskLocal::readFile(const String & path,
 std::unique_ptr<WriteBufferFromFileBase>
 DiskLocal::writeFile(const String & path, size_t buf_size, WriteMode mode, const WriteSettings & settings)
 {
+    if (settings.use_direct_io_for_insert && mode != WriteMode::Append)
+    {
+        /// O_DIRECT is incompatible with O_APPEND (both require aligned offsets).
+        /// Append mode is used only for metadata / small files, not part data, so
+        /// we silently fall through to the buffered path in that case.
+        return std::make_unique<WriteBufferFromFileDirectIO>(
+            fs::path(disk_path) / path,
+            buf_size,
+            settings.local_throttler);
+    }
+
     int flags = (mode == WriteMode::Append) ? (O_APPEND | O_CREAT | O_WRONLY) : -1;
     return std::make_unique<WriteBufferFromFile>(
         fs::path(disk_path) / path,

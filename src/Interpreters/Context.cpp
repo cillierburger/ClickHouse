@@ -274,6 +274,7 @@ namespace Setting
     extern const SettingsUInt64 automatic_parallel_replicas_mode;
     extern const SettingsMilliseconds async_insert_poll_timeout_ms;
     extern const SettingsBool azure_allow_parallel_part_upload;
+    extern const SettingsBool use_direct_io_for_inserts;
     extern const SettingsString cluster_for_parallel_replicas;
     extern const SettingsBool enable_filesystem_cache;
     extern const SettingsBool enable_filesystem_cache_log;
@@ -7619,6 +7620,8 @@ WriteSettings Context::getWriteSettings() const
 
     res.remote_throttler = getRemoteWriteThrottler();
     res.local_throttler = getLocalWriteThrottler();
+
+    res.use_direct_io_for_insert = settings_ref[Setting::use_direct_io_for_inserts];
 
     return res;
 }

@@ -83,6 +83,7 @@ namespace Setting
 namespace MergeTreeSetting
 {
     extern const MergeTreeSettingsBool assign_part_uuids;
+    extern const MergeTreeSettingsBool use_direct_io_for_insert;
     extern const MergeTreeSettingsBool fsync_after_insert;
     extern const MergeTreeSettingsBool fsync_part_directory;
     extern const MergeTreeSettingsUInt64 min_free_disk_bytes_to_perform_insert;
@@ -890,6 +891,11 @@ MergeTreeTemporaryPartPtr MergeTreeDataWriter::writeTempPartImpl(
     IMergedBlockOutputStream::GatheredData gathered_data;
     gathered_data.statistics = std::move(statistics);
 
+    WriteSettings write_settings = context->getWriteSettings();
+    /// Table setting takes precedence over the query-level setting.
+    if ((*data_settings)[MergeTreeSetting::use_direct_io_for_insert])
+        write_settings.use_direct_io_for_insert = true;
+
     auto out = std::make_unique<MergedBlockOutputStream>(
         new_data_part,
         data_settings,
@@ -902,7 +908,7 @@ MergeTreeTemporaryPartPtr MergeTreeDataWriter::writeTempPartImpl(
         block.bytes(),
         /*reset_columns=*/false,
         /*blocks_are_granules_size=*/false,
-        context->getWriteSettings(),
+        write_settings,
         static_cast<WrittenOffsetSubstreams *>(nullptr));
 
     out->writeWithPermutation(block, perm_ptr);

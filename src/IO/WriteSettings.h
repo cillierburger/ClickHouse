@@ -33,6 +33,14 @@ struct WriteSettings
 
     bool is_initial_access_check = false;
 
+    /// When true, INSERT part writes on local disks open files with O_DIRECT,
+    /// bypassing the page cache. Useful for write-heavy ETL workloads on fast
+    /// local storage (NVMe / RAID 0) where dirty-page pressure would otherwise
+    /// throttle write() syscalls. Controlled by the query setting
+    /// `use_direct_io_for_inserts` or the MergeTree table setting
+    /// `use_direct_io_for_insert`.
+    bool use_direct_io_for_insert = false;
+
     std::string object_storage_write_if_none_match; /// Supported only for S3-like object storages.
     std::string object_storage_write_if_match;     /// Supported only for S3-like object storages.
 

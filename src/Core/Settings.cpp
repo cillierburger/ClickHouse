@@ -1608,6 +1608,22 @@ Possible values:
 - 0 — Direct I/O is disabled.
 - Positive integer.
 )", 0) \
+    DECLARE(Bool, use_direct_io_for_inserts, false, R"(
+Use `O_DIRECT` when writing new MergeTree parts to local disks during `INSERT`.
+
+Bypasses the OS page cache for part data files, eliminating dirty-page pressure
+from concurrent inserts and leaving the page cache available for reads.
+Particularly effective on fast local storage (NVMe, RAID 0) under heavy ETL
+workloads where many concurrent `INSERT ... SELECT` operations would otherwise
+cause write() syscalls to block on page-cache dirty throttling.
+
+Note: `O_DIRECT` requires writes to be aligned to 4096 bytes. ClickHouse
+handles this automatically by padding the final compressed block and calling
+`ftruncate` to restore the correct file length. Marks files and other small
+metadata files are not affected and continue to use buffered I/O.
+
+Not applicable to remote disks (S3, Azure Blob, etc.) or append-mode writes.
+)", 0) \
     DECLARE(UInt64, min_bytes_to_use_mmap_io, 0, R"(
 This is an experimental setting. Sets the minimum amount of memory for reading large files without copying data from the kernel to userspace. Recommended threshold is about 64 MB, because [mmap/munmap](https://en.wikipedia.org/wiki/Mmap) is slow. It makes sense only for large files and helps only if data reside in the page cache.
 
