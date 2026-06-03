@@ -276,11 +276,11 @@ private:
     static std::unique_ptr<DatabaseCatalog> database_catalog;
 
     explicit DatabaseCatalog(ContextMutablePtr global_context_);
-    void assertDatabaseDoesntExistUnlocked(const String & database_name) const TSA_REQUIRES(databases_mutex);
+    void assertDatabaseDoesntExistUnlocked(const String & database_name) const TSA_REQUIRES_SHARED(databases_mutex);
 
     void shutdownImpl(std::function<void()> shutdown_system_logs);
 
-    void checkTableCanBeRemovedOrRenamedUnlocked(const StorageID & removing_table, bool check_referential_dependencies, bool check_loading_dependencies, bool is_drop_database) const TSA_REQUIRES(databases_mutex);
+    void checkTableCanBeRemovedOrRenamedUnlocked(const StorageID & removing_table, bool check_referential_dependencies, bool check_loading_dependencies, bool is_drop_database) const TSA_REQUIRES_SHARED(databases_mutex);
 
     struct UUIDToStorageMapPart
     {
@@ -312,7 +312,13 @@ private:
 
     static constexpr size_t reschedule_time_ms = 100;
 
-    mutable std::mutex databases_mutex;
+    /// Protects `databases`, `databases_without_datalake_catalogs`, and the three dependency
+    /// graphs (`referential_dependencies`, `loading_dependencies`, `view_dependencies`).
+    /// Reads (table/database lookups, `get*Dependencies`, `get*Dependents`, `getDependentViews`)
+    /// take a shared lock; mutations (`add/remove/updateDependencies`, attach/detach database,
+    /// `removeViewDependency`, and the cyclic-dependency checks that temporarily mutate the
+    /// graphs) take an exclusive lock.
+    mutable SharedMutex databases_mutex;
 
     Databases databases TSA_GUARDED_BY(databases_mutex);
     Databases databases_without_datalake_catalogs TSA_GUARDED_BY(databases_mutex);

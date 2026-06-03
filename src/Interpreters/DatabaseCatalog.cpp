@@ -1,5 +1,6 @@
 #include <Interpreters/DatabaseCatalog.h>
 #include <Common/CurrentThread.h>
+#include <Common/SharedLockGuard.h>
 
 #include <Access/ContextAccess.h>
 
@@ -284,7 +285,7 @@ void DatabaseCatalog::shutdownImpl(std::function<void()> shutdown_system_logs)
 
     Databases current_databases;
     {
-        std::lock_guard lock(databases_mutex);
+        SharedLockGuard lock(databases_mutex);
         current_databases = databases;
     }
 
@@ -451,7 +452,7 @@ DatabaseAndTable DatabaseCatalog::getTableImpl(
             return {};
         }
 
-        std::lock_guard lock{databases_mutex};
+        SharedLockGuard lock{databases_mutex};
         auto it = databases.find(table_id.getDatabaseName());
         if (databases.end() != it)
             database = it->second;
@@ -560,7 +561,7 @@ void DatabaseCatalog::assertDatabaseExists(const String & database_name) const
 
     DatabasePtr db;
     {
-        std::lock_guard lock{databases_mutex};
+        SharedLockGuard lock{databases_mutex};
         if (auto it = databases.find(database_name); it != databases.end())
             db = it->second;
     }
@@ -583,19 +584,19 @@ void DatabaseCatalog::assertDatabaseExists(const String & database_name) const
 
 bool DatabaseCatalog::hasDatalakeCatalogs() const
 {
-    std::lock_guard lock{databases_mutex};
+    SharedLockGuard lock{databases_mutex};
     return databases.size() != databases_without_datalake_catalogs.size();
 }
 
 bool DatabaseCatalog::isDatalakeCatalog(const String & database_name) const
 {
-    std::lock_guard lock{databases_mutex};
+    SharedLockGuard lock{databases_mutex};
     return databases.contains(database_name) && !databases_without_datalake_catalogs.contains(database_name);
 }
 
 void DatabaseCatalog::assertDatabaseDoesntExist(const String & database_name) const
 {
-    std::lock_guard lock{databases_mutex};
+    SharedLockGuard lock{databases_mutex};
     assertDatabaseDoesntExistUnlocked(database_name);
 }
 
@@ -780,7 +781,7 @@ DatabasePtr DatabaseCatalog::getDatabase(std::string_view database_name) const
     assert(!database_name.empty());
     DatabasePtr db;
     {
-        std::lock_guard lock{databases_mutex};
+        SharedLockGuard lock{databases_mutex};
         if (auto it = databases.find(database_name); it != databases.end())
             db = it->second;
     }
@@ -806,7 +807,7 @@ DatabasePtr DatabaseCatalog::getDatabase(std::string_view database_name) const
 DatabasePtr DatabaseCatalog::tryGetDatabase(std::string_view database_name) const
 {
     assert(!database_name.empty());
-    std::lock_guard lock{databases_mutex};
+    SharedLockGuard lock{databases_mutex};
     auto it = databases.find(database_name);
     if (it == databases.end())
         return {};
@@ -833,13 +834,13 @@ DatabasePtr DatabaseCatalog::tryGetDatabase(const UUID & uuid) const
 bool DatabaseCatalog::isDatabaseExist(std::string_view database_name) const
 {
     assert(!database_name.empty());
-    std::lock_guard lock{databases_mutex};
+    SharedLockGuard lock{databases_mutex};
     return databases.contains(database_name);
 }
 
 Databases DatabaseCatalog::getDatabases(GetDatabasesOptions options) const
 {
-    std::lock_guard lock{databases_mutex};
+    SharedLockGuard lock{databases_mutex};
     if (options.with_datalake_catalogs)
         return databases;
 
@@ -853,7 +854,7 @@ bool DatabaseCatalog::isTableExist(const DB::StorageID & table_id, ContextPtr co
 
     DatabasePtr db;
     {
-        std::lock_guard lock{databases_mutex};
+        SharedLockGuard lock{databases_mutex};
         auto iter = databases.find(table_id.database_name);
         if (iter != databases.end())
             db = iter->second;
@@ -1020,7 +1021,7 @@ void DatabaseCatalog::removeViewDependency(const StorageID & source_table_id, co
 
 std::vector<StorageID> DatabaseCatalog::getDependentViews(const StorageID & source_table_id) const
 {
-    std::lock_guard lock{databases_mutex};
+    SharedLockGuard lock{databases_mutex};
     return view_dependencies.getDependencies(source_table_id);
 }
 
@@ -1696,25 +1697,25 @@ void DatabaseCatalog::addDependencies(
 
 std::vector<StorageID> DatabaseCatalog::getReferentialDependencies(const StorageID & table_id) const
 {
-    std::lock_guard lock{databases_mutex};
+    SharedLockGuard lock{databases_mutex};
     return referential_dependencies.getDependencies(table_id);
 }
 
 std::vector<StorageID> DatabaseCatalog::getReferentialDependents(const StorageID & table_id) const
 {
-    std::lock_guard lock{databases_mutex};
+    SharedLockGuard lock{databases_mutex};
     return referential_dependencies.getDependents(table_id);
 }
 
 std::vector<StorageID> DatabaseCatalog::getLoadingDependencies(const StorageID & table_id) const
 {
-    std::lock_guard lock{databases_mutex};
+    SharedLockGuard lock{databases_mutex};
     return loading_dependencies.getDependencies(table_id);
 }
 
 std::vector<StorageID> DatabaseCatalog::getLoadingDependents(const StorageID & table_id) const
 {
-    std::lock_guard lock{databases_mutex};
+    SharedLockGuard lock{databases_mutex};
     return loading_dependencies.getDependents(table_id);
 }
 
@@ -1777,7 +1778,7 @@ void DatabaseCatalog::checkTableCanBeRemovedOrRenamed(
 {
     if (!check_referential_dependencies && !check_loading_dependencies)
         return;
-    std::lock_guard lock{databases_mutex};
+    SharedLockGuard lock{databases_mutex};
     checkTableCanBeRemovedOrRenamedUnlocked(table_id, check_referential_dependencies, check_loading_dependencies, is_drop_database);
 }
 
