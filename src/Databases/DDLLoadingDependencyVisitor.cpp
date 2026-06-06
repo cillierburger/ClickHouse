@@ -24,7 +24,7 @@ using TableLoadingDependenciesVisitor = DDLLoadingDependencyVisitor::Visitor;
 
 TableNamesSet getLoadingDependenciesFromCreateQuery(ContextPtr global_context, const QualifiedTableName & table, const ASTPtr & ast, bool can_throw)
 {
-    assert(global_context == global_context->getGlobalContext());
+    chassert(global_context == global_context->getGlobalContext());
 
     /// Same caching scheme as `getDependenciesFromCreateQuery` — InterpreterCreateQuery invokes
     /// this twice per CREATE (cycle-check + addTableDependencies), and a thread handles one query

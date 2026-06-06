@@ -16,6 +16,7 @@
 #include <Common/randomSeed.h>
 #include <Common/scope_guard_safe.h>
 #include <Common/setThreadName.h>
+#include <Common/ThreadGroupSwitcher.h>
 
 
 namespace DB

@@ -15,6 +15,7 @@
 #include <Parsers/ASTInterpolateElement.h>
 
 #include <DataTypes/DataTypeNullable.h>
+#include <DataTypes/validateGroupByKeyType.h>
 #include <Columns/IColumn.h>
 
 #include <Interpreters/Aggregator.h>
@@ -361,7 +362,7 @@ void ExpressionAnalyzer::analyzeAggregation(ActionsDAG & temp_actions)
                         if (getContext()->getClientInfo().distributed_depth == 0 || settings.distributed_group_by_no_merge > 0)
                         {
                             /// Constant expressions have non-null column pointer at this stage.
-                            if (node->column && isColumnConst(*node->column))
+                            if (node->column)
                             {
                                 select_query->group_by_with_constant_keys = true;
 
@@ -379,7 +380,7 @@ void ExpressionAnalyzer::analyzeAggregation(ActionsDAG & temp_actions)
                             }
                         }
 
-                        NameAndTypePair key{column_name, use_nulls ? makeNullableSafe(node->result_type) : node->result_type };
+                        NameAndTypePair key{column_name, use_nulls ? makeNullableOrLowCardinalityNullableSafe(node->result_type) : node->result_type };
 
                         grouping_set_list.push_back(key);
 
@@ -415,7 +416,7 @@ void ExpressionAnalyzer::analyzeAggregation(ActionsDAG & temp_actions)
                     if (getContext()->getClientInfo().distributed_depth == 0 || settings.distributed_group_by_no_merge > 0)
                     {
                         /// Constant expressions have non-null column pointer at this stage.
-                        if (node->column && isColumnConst(*node->column))
+                        if (node->column)
                         {
                             select_query->group_by_with_constant_keys = true;
 
@@ -433,7 +434,7 @@ void ExpressionAnalyzer::analyzeAggregation(ActionsDAG & temp_actions)
                         }
                     }
 
-                    NameAndTypePair key = NameAndTypePair{ column_name, use_nulls ? makeNullableSafe(node->result_type) : node->result_type };
+                    NameAndTypePair key = NameAndTypePair{ column_name, use_nulls ? makeNullableOrLowCardinalityNullableSafe(node->result_type) : node->result_type };
 
                     /// Aggregation keys are uniqued.
                     if (!unique_keys.contains(key.name))
@@ -693,6 +694,13 @@ void ExpressionAnalyzer::makeWindowDescriptionFromAST(const Context & context_,
 
             auto actions_dag = std::make_unique<ActionsDAG>(aggregated_columns);
             getRootActions(column_ast, false, *actions_dag);
+
+            for (const auto & col : actions_dag->getResultColumns())
+            {
+                if (col.name == with_alias->getColumnName())
+                    DB::validateGroupByKeyType(col.type, context_.getSettingsRef()[Setting::allow_suspicious_types_in_group_by]);
+            }
+
             desc.partition_by_actions.push_back(std::move(actions_dag));
         }
     }
@@ -799,7 +807,7 @@ void ExpressionAnalyzer::makeWindowDescriptions(ActionsDAG & actions)
     for (const ASTPtr & ast : syntax->window_function_asts)
     {
         const ASTFunction & function_node = typeid_cast<const ASTFunction &>(*ast);
-        assert(function_node.isWindowFunction());
+        chassert(function_node.isWindowFunction());
 
         WindowFunctionDescription window_function;
         window_function.function_node = &function_node;
@@ -878,7 +886,7 @@ void ExpressionAnalyzer::makeWindowDescriptions(ActionsDAG & actions)
 
             if (!inserted)
             {
-                assert(it->second.full_sort_description == full_sort_description);
+                chassert(it->second.full_sort_description == full_sort_description);
             }
 
             it->second.window_functions.push_back(window_function);
@@ -1491,22 +1499,7 @@ bool SelectQueryExpressionAnalyzer::appendGroupBy(ExpressionActionsChain & chain
 
 void SelectQueryExpressionAnalyzer::validateGroupByKeyType(const DB::DataTypePtr & key_type) const
 {
-    if (getContext()->getSettingsRef()[Setting::allow_suspicious_types_in_group_by])
-        return;
-
-    auto check = [](const IDataType & type)
-    {
-        if (isDynamic(type) || isVariant(type))
-            throw Exception(
-                ErrorCodes::ILLEGAL_COLUMN,
-                "Data types Variant/Dynamic are not allowed in GROUP BY keys, because it can lead to unexpected results. "
-                "Consider using a subcolumn with a specific data type instead (for example 'column.Int64' or 'json.some.path.:Int64' if "
-                "its a JSON path subcolumn) or casting this column to a specific data type. "
-                "Set setting allow_suspicious_types_in_group_by = 1 in order to allow it");
-    };
-
-    check(*key_type);
-    key_type->forEachChild(check);
+    DB::validateGroupByKeyType(key_type, getContext()->getSettingsRef()[Setting::allow_suspicious_types_in_group_by]);
 }
 
 void SelectQueryExpressionAnalyzer::appendAggregateFunctionsArguments(ExpressionActionsChain & chain, bool only_types)
@@ -1875,7 +1868,7 @@ ActionsAndProjectInputsFlagPtr SelectQueryExpressionAnalyzer::appendProjectResul
             if (const auto * as_literal = ast->as<ASTLiteral>())
             {
                 source_name = as_literal->unique_column_name;
-                assert(!source_name.empty());
+                chassert(!source_name.empty());
             }
 
             result_columns.emplace_back(source_name, result_name);
@@ -2114,9 +2107,7 @@ ExpressionAnalysisResult::ExpressionAnalysisResult(
                 Block before_prewhere_sample = source_header;
                 if (sanitizeBlock(before_prewhere_sample))
                 {
-                    ExpressionActions(
-                        prewhere_dag_and_flags->dag.clone(),
-                        ExpressionActionsSettings(context->getSettingsRef())).execute(before_prewhere_sample);
+                    before_prewhere_sample = prewhere_dag_and_flags->dag.updateHeader(before_prewhere_sample);
                     auto & column_elem = before_prewhere_sample.getByName(query.prewhere()->getColumnName());
                     /// If the filter column is a constant, record it.
                     if (column_elem.column)
@@ -2155,9 +2146,9 @@ ExpressionAnalysisResult::ExpressionAnalysisResult(
                     if (!extracting_subcolumns_dag.getNodes().empty())
                         dag = ActionsDAG::merge(std::move(extracting_subcolumns_dag), std::move(dag));
 
-                    ExpressionActions(
-                        std::move(dag),
-                        ExpressionActionsSettings(context->getSettingsRef())).execute(before_where_sample);
+                    /// Use updateHeader (dry-run evaluation) instead of ExpressionActions::execute,
+                    /// because sets from subqueries may not be ready yet at this point.
+                    before_where_sample = dag.updateHeader(before_where_sample);
 
                     auto & column_elem
                         = before_where_sample.getByName(query.where()->getColumnName());
