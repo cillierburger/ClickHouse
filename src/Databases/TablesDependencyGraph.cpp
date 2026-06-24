@@ -96,6 +96,7 @@ void TablesDependencyGraph::addDependency(const StorageID & table_id, const Stor
     auto * dependency_node = addOrUpdateNode(dependency);
 
     bool inserted = table_node->dependencies.insert(dependency_node).second;
+
     if (!inserted)
         return; /// Not inserted because we already had this dependency.
 
@@ -103,8 +104,18 @@ void TablesDependencyGraph::addDependency(const StorageID & table_id, const Stor
     [[maybe_unused]] bool inserted_to_set = dependency_node->dependents.insert(table_node).second;
     chassert(inserted_to_set);
 
-    setNeedRecalculateLevels();
+    // Optimization: only recalculate levels if the level needs to be increased
+    size_t required_level = dependency_node->level + 1;
+    if (table_node->level < required_level)
+    {
+        table_node->level = required_level;
+        nodes_sorted_by_level_lazy.clear(); // conservative fallback
+        return;
+    }
+
+    // no change in levels needed
 }
+
 
 
 void TablesDependencyGraph::addDependencies(const StorageID & table_id, const std::vector<StorageID> & dependencies)
@@ -112,47 +123,36 @@ void TablesDependencyGraph::addDependencies(const StorageID & table_id, const st
     auto * table_node = addOrUpdateNode(table_id);
 
     std::unordered_set<Node *> new_dependency_nodes;
+    size_t max_parent_level = 0;
     for (const auto & dependency : dependencies)
-        new_dependency_nodes.emplace(addOrUpdateNode(dependency));
+    {
+        Node * dep_node = addOrUpdateNode(dependency);
+        new_dependency_nodes.emplace(dep_node);
+        max_parent_level = std::max(max_parent_level, dep_node->level);
+    }
 
-    if (table_node->dependencies == new_dependency_nodes)
+    bool is_new_or_isolated = table_node->dependencies.empty() && table_node->dependents.empty();
+    bool unchanged = (table_node->dependencies == new_dependency_nodes);
+    if (unchanged)
         return;
 
-    auto old_dependencies = getDependencies(*table_node);
-    auto old_dependency_nodes = std::move(table_node->dependencies);
+    auto old_dependencies = std::move(table_node->dependencies);
+    table_node->dependencies = new_dependency_nodes;
 
-    if (!old_dependencies.empty())
+    for (Node * old_dep : old_dependencies)
+        old_dep->dependents.erase(table_node);
+    for (Node * new_dep : new_dependency_nodes)
+        new_dep->dependents.insert(table_node);
+
+    if (is_new_or_isolated)
     {
-        LOG_WARNING(
-            getLogger(),
-            "Replacing outdated dependencies ({}) of {} with: {}",
-            fmt::join(old_dependencies, ", "),
-            table_id,
-            fmt::join(dependencies, ", "));
+        table_node->level = max_parent_level + 1;
+        nodes_sorted_by_level_lazy.clear(); // Optionally: append to vector directly
+        return; // ✅ skip full recalculation
     }
 
-    for (auto * dependency_node : old_dependency_nodes)
-    {
-        if (!new_dependency_nodes.contains(dependency_node))
-        {
-            [[maybe_unused]] bool removed_from_set = dependency_node->dependents.erase(table_node);
-            chassert(removed_from_set);
-        }
-    }
-
-    for (auto * dependency_node : new_dependency_nodes)
-    {
-        if (!old_dependency_nodes.contains(dependency_node))
-        {
-            [[maybe_unused]] bool inserted_to_set = dependency_node->dependents.insert(table_node).second;
-            chassert(inserted_to_set);
-        }
-    }
-
-    table_node->dependencies = std::move(new_dependency_nodes);
-    setNeedRecalculateLevels();
+    setNeedRecalculateLevels(); // fallback
 }
-
 
 void TablesDependencyGraph::addDependencies(const StorageID & table_id, const TableNamesSet & dependencies)
 {
@@ -449,7 +449,7 @@ std::vector<StorageID> TablesDependencyGraph::getTables() const
 void TablesDependencyGraph::mergeWith(const TablesDependencyGraph & other)
 {
     for (const auto & other_node : other.nodes)
-        addDependencies(other_node->storage_id, TablesDependencyGraph::getDependencies(*other_node));
+    	addDependencies(other_node->storage_id, TablesDependencyGraph::getDependencies(*other_node));
 }
 
 
@@ -551,6 +551,52 @@ bool TablesDependencyGraph::hasCyclicDependencies() const
     const auto & nodes_sorted_by_level = getNodesSortedByLevel();
     return !nodes_sorted_by_level.empty() && (nodes_sorted_by_level.back()->level == CYCLIC_LEVEL);
 }
+
+bool TablesDependencyGraph::wouldCreateCycle(
+    const StorageID & table_id,
+    const TableNamesSet & new_dependencies) const
+{
+    auto *start_node = findNode(table_id);
+    if (!start_node)
+        return false;
+
+    std::unordered_set<Node *> global_visited;
+
+    std::function<bool(Node *)> dfs = [&](Node * node) -> bool
+    {
+        if (node == start_node)
+            return true;
+        if (!global_visited.insert(node).second)
+            return false;
+        if (node->level < start_node->level)
+            return false;
+
+        for (Node * dep : node->dependencies)
+            if (dfs(dep))
+                return true;
+
+        return false;
+    };
+
+    for (const auto & dep : new_dependencies)
+    {
+        if (table_id == StorageID(dep))
+            return true;
+
+        auto *dep_node = findNode(StorageID(dep));
+        if (!dep_node)
+            continue;
+
+        if (start_node->level < dep_node->level)
+            continue; // Adding edge from higher to lower level: no cycle possible
+
+        if (dfs(dep_node))
+            return true;
+    }
+
+    return false;
+}
+
 
 
 std::vector<StorageID> TablesDependencyGraph::getTablesWithCyclicDependencies() const
